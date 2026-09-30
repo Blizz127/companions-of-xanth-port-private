@@ -1,6 +1,6 @@
 # Native dev menu work
 
-Releases up to alpha.3 do not contain a dev menu; alpha.4 enables it by default for this preview. The shared implementation
+Releases up to alpha.3 do not contain a dev menu; alpha.4 and later enable it by default for this preview. The shared implementation
 contract is `~/release-staging/port-dev-menu/DEV_MENU_SPEC.md` (v1,
 2026-09-30). The owner additionally requires Xanth checkpoints to use the
 game's own save/restore path, with no host memory pokes.
@@ -163,9 +163,19 @@ whose fingerprints cannot be told apart are not offered. `--steps` in the
 sweep verifies it: warp to step N-1's end, then Finish Current Step must
 land exactly on step N's fingerprint.
 
+A route point reached from one of the game's own recorded anchor saves
+(step name `*`, a chain start) is a warp spot and the start of the next
+step, never a step itself: Finish Current Step skips over it, Finish Area
+ignores it, and no step is offered for the unrecorded play between the
+previous step's end and the anchor. Steps missing from the list (not built,
+or not verified) are skipped; the steps after them are still found.
+
 Results on 2026-09-30 (headless, local checkpoints): warp sweep VERIFIED 8/8
 (bedroom at start, kitchen steps 1-3, package received, opening finished,
 cavern with Nada, second cavern door), and Finish Current Step VERIFIED 7/7.
+The alpha.5 builder lists 23 warp spots and 18 finish-step entries through
+Isthmus, the Void, Earth and the Region of Fire; every entry past the cavern
+is offered only after your own local sweep verifies it.
 
 After any warp or step finish, the first new game save shows the toast "Dev
 menu was used: this save may not match a normal playthrough" and appends a
@@ -173,8 +183,9 @@ line to `xanth-dev-menu.log` in the save directory.
 
 ## Remaining gates
 
-Checkpoints currently cover the opening and the first Xanth cavern. More
-areas need route builders plus a passing sweep before they are listed.
+Verified checkpoints cover the opening and the first Xanth cavern. The route
+builders now reach the Region of Fire; each of those entries is listed only
+after a passing local sweep.
 Cheats and quick save/load are not offered: neither has a verified
 game-state path yet.
 
@@ -201,7 +212,7 @@ python3 tools/xanth_dev_warp_sweep.py --port ./xanth_port --data /path/to/your/d
 ```
 
 Building replays the verified route and can take substantial time. The sweep
-runs headlessly. Eight warp spots and seven Finish Current Step entries become
+runs headlessly. Up to 23 warp spots and 18 Finish Current Step entries become
 available after successful local verification. Before that, those menu pages
 explain that checkpoints are missing. Saves, reference frames and verification
 logs remain in your local data directory and must not be redistributed.

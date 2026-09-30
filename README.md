@@ -9,8 +9,8 @@ This is a passion project. I'm working hard on it, but it's made for fun and for
 ## How to play
 
 1. Download the Linux x86_64 release asset named
-   `xanth-port-v0.1.0-alpha.4-linux-x86_64.tar.gz` from
-   [Releases](https://github.com/Blizz127/Companions-Of-Xanth-Decompile/releases/tag/v0.1.0-alpha.4) and extract it
+   `xanth-port-v0.1.0-alpha.5-linux-x86_64.tar.gz` from
+   [Releases](https://github.com/Blizz127/Companions-Of-Xanth-Decompile/releases/tag/v0.1.0-alpha.5) and extract it
    to `~/Games/companions-of-xanth/port/`. The package contains the port and
    checkpoint-building tools, but no game files. Linux uses your system SDL2.
 2. Supply files from your own copy: `XANTH.EXE` and the 90 runtime files listed
@@ -37,8 +37,8 @@ Linux requires installed SDL2 (`libSDL2-2.0.so.0`) and glibc 2.34 or newer. The 
 On in this preview: press F12 or Back+Start on one controller. Set
 `dev_menu=0` in your port config or use `--no-dev-menu` to hide it.
 `XANTH_CHEATS=0` hard-disables it. The menu offers
-8 verified warps and 7 finish-step entries after you build and verify your
-own local checkpoints. See [DEV_MENU.md](docs/DEV_MENU.md) for the packaged
+up to 23 warps and 18 finish-step entries, reaching the Region of Fire, after
+you build and verify your own local checkpoints. See [DEV_MENU.md](docs/DEV_MENU.md) for the packaged
 tools and instructions. No cheats are included. A lone Back or Start acts
 on release. With the menu on, fullscreen and CRT scanlines are in Options
 instead of the `--hotkeys` F10/F11 shortcuts.
@@ -119,7 +119,7 @@ implementation. No game data or proprietary toolchain artifacts belong in Git.
 Experimental release packages contain the port and documentation only.
 Supply your own matching game files with `--data`. See
 [release setup instructions](releases/GETTING_STARTED.txt) and
-[prerelease notes](releases/v0.1.0-alpha.4.md) for requirements and limits.
+[prerelease notes](releases/v0.1.0-alpha.5.md) for requirements and limits.
 
 **Status: verified routes extend into the Region of Fire, including charcoal
 collection. The full 1,000-point finale remains unverified.** The port executes the retail `XANTH.EXE` under its own 16-bit CPU and
