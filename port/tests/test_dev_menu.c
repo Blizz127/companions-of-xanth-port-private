@@ -103,6 +103,8 @@ static bool tap(SDL_Keycode sym, SDL_Scancode sc) {
 #define UP()    tap(SDLK_UP, SDL_SCANCODE_UP)
 #define ENTER() tap(SDLK_RETURN, SDL_SCANCODE_RETURN)
 #define ESC()   tap(SDLK_ESCAPE, SDL_SCANCODE_ESCAPE)
+/* Let the chord window pass and run the frame hook that resolves it. */
+#define SETTLE() do { dev_menu_advance_ticks_for_tests(DEV_MENU_CHORD_WINDOW_MS + 1); dev_menu_frame(0); } while (0)
 static bool pad_tap(SDL_JoystickID id, Uint8 b) {
     bool x = filt(btn_ev(id, b, true)), y = filt(btn_ev(id, b, false));
     return x && y;
@@ -327,20 +329,26 @@ static void test_same_pad_combo(void) {
     CHECK(dev_menu_is_open());
     CHECK(filt(btn_ev(7, SDL_CONTROLLER_BUTTON_START, false)));
     CHECK(filt(btn_ev(7, SDL_CONTROLLER_BUTTON_BACK, false)));
+    SETTLE();
     CHECK(queued_replays() == 0);                          /* a chord never reaches the game */
     CHECK(filt(btn_ev(7, SDL_CONTROLLER_BUTTON_START, true)));
     CHECK(filt(btn_ev(7, SDL_CONTROLLER_BUTTON_BACK, true)));
     CHECK(!dev_menu_is_open());                            /* either order closes */
     filt(btn_ev(7, SDL_CONTROLLER_BUTTON_BACK, false));
     filt(btn_ev(7, SDL_CONTROLLER_BUTTON_START, false));
+    SETTLE();
     CHECK(queued_replays() == 0);
 
-    /* Buttons on two pads never combine; each lone press is replayed. */
+    /* Buttons on two pads never combine; each lone press is replayed once
+     * the chord window has passed, never before. */
     CHECK(filt(btn_ev(7, SDL_CONTROLLER_BUTTON_BACK, true)));
     CHECK(filt(btn_ev(8, SDL_CONTROLLER_BUTTON_START, true)));
     CHECK(!dev_menu_is_open());
     CHECK(filt(btn_ev(7, SDL_CONTROLLER_BUTTON_BACK, false)));
     CHECK(filt(btn_ev(8, SDL_CONTROLLER_BUTTON_START, false)));
+    dev_menu_frame(0);
+    CHECK(queued_replays() == 0);                          /* withheld inside the window */
+    SETTLE();
     CHECK(queued_replays() == 4);
     {
         SDL_Event ev;
@@ -349,6 +357,7 @@ static void test_same_pad_combo(void) {
         CHECK(passed == 4);                                /* replays pass the filter */
     }
     CHECK(pad_tap(9, SDL_CONTROLLER_BUTTON_START));        /* lone Start: game gets a tap */
+    SETTLE();
     CHECK(queued_replays() == 2);
     SDL_FlushEvents(SDL_FIRSTEVENT, SDL_LASTEVENT);
 
@@ -366,7 +375,97 @@ static void test_same_pad_combo(void) {
     OPEN();
     CHECK(!dev_menu_is_open() && g_pad_mask == 0xFFFFFFFFu);
     filt(btn_ev(7, SDL_CONTROLLER_BUTTON_A, false));
+    SETTLE();                                              /* the chord gesture ends */
     CHECK(g_pad_mask == 0);
+}
+
+/* The shared chord rule: Back and Start also chord when the second press
+ * lands within the window of the first, even after the first was released.
+ * A lone short press is replayed once the window passes; a lone hold that
+ * outlives the window delivers one tap and nothing more on release. */
+static void test_chord_tap_window(void) {
+    begin(true);
+    CHECK(pad_tap(7, SDL_CONTROLLER_BUTTON_BACK));         /* tap Back... */
+    dev_menu_advance_ticks_for_tests(DEV_MENU_CHORD_WINDOW_MS - 20);
+    dev_menu_frame(0);
+    CHECK(queued_replays() == 0 && !dev_menu_is_open());
+    CHECK(filt(btn_ev(7, SDL_CONTROLLER_BUTTON_START, true)));   /* ...then Start inside the window */
+    CHECK(dev_menu_is_open());
+    filt(btn_ev(7, SDL_CONTROLLER_BUTTON_START, false));
+    SETTLE();
+    CHECK(queued_replays() == 0);                          /* the Back tap was never delivered */
+    CHECK(pad_tap(7, SDL_CONTROLLER_BUTTON_START));        /* Start first works the same */
+    dev_menu_advance_ticks_for_tests(DEV_MENU_CHORD_WINDOW_MS - 20);
+    dev_menu_frame(0);
+    CHECK(filt(btn_ev(7, SDL_CONTROLLER_BUTTON_BACK, true)));
+    CHECK(!dev_menu_is_open());
+    filt(btn_ev(7, SDL_CONTROLLER_BUTTON_BACK, false));
+    SETTLE();
+    CHECK(queued_replays() == 0);
+    /* Too late: the second press after the window is a fresh lone press. */
+    CHECK(pad_tap(7, SDL_CONTROLLER_BUTTON_BACK));
+    SETTLE();
+    CHECK(queued_replays() == 2);                          /* Back tap replayed */
+    SDL_FlushEvents(SDL_FIRSTEVENT, SDL_LASTEVENT);
+    CHECK(filt(btn_ev(7, SDL_CONTROLLER_BUTTON_START, true)));
+    CHECK(!dev_menu_is_open());
+    /* A lone hold past the window: one tap, and the release adds nothing. */
+    SETTLE();
+    CHECK(queued_replays() == 2);
+    SDL_FlushEvents(SDL_FIRSTEVENT, SDL_LASTEVENT);
+    SETTLE();
+    CHECK(queued_replays() == 0);
+    filt(btn_ev(7, SDL_CONTROLLER_BUTTON_START, false));
+    SETTLE();
+    CHECK(queued_replays() == 0 && g_pad_mask == 0);
+}
+
+/* A physical pad and its Steam Input mirror (or an InputPlumber pad in
+ * between) deliver the same Back+Start chord within a few milliseconds.
+ * That is one chord: the menu toggles once, and the mirror's releases never
+ * reach the game as lone taps. Chords on different pads that are apart in
+ * time still count separately. */
+static void test_mirrored_pads_chord(void) {
+    begin(true);
+    CHECK(filt(btn_ev(11, SDL_CONTROLLER_BUTTON_BACK, true)));
+    CHECK(filt(btn_ev(12, SDL_CONTROLLER_BUTTON_BACK, true)));
+    CHECK(filt(btn_ev(11, SDL_CONTROLLER_BUTTON_START, true)));
+    CHECK(filt(btn_ev(12, SDL_CONTROLLER_BUTTON_START, true)));
+    CHECK(dev_menu_is_open());                             /* once, not open-then-closed */
+    filt(btn_ev(11, SDL_CONTROLLER_BUTTON_START, false));
+    filt(btn_ev(12, SDL_CONTROLLER_BUTTON_START, false));
+    filt(btn_ev(11, SDL_CONTROLLER_BUTTON_BACK, false));
+    filt(btn_ev(12, SDL_CONTROLLER_BUTTON_BACK, false));
+    SETTLE();
+    CHECK(dev_menu_is_open());
+    CHECK(queued_replays() == 0);
+    /* The mirror can lead, and Start can come first. */
+    filt(btn_ev(12, SDL_CONTROLLER_BUTTON_START, true));
+    filt(btn_ev(11, SDL_CONTROLLER_BUTTON_START, true));
+    filt(btn_ev(12, SDL_CONTROLLER_BUTTON_BACK, true));
+    filt(btn_ev(11, SDL_CONTROLLER_BUTTON_BACK, true));
+    CHECK(!dev_menu_is_open());
+    filt(btn_ev(12, SDL_CONTROLLER_BUTTON_BACK, false));
+    filt(btn_ev(11, SDL_CONTROLLER_BUTTON_BACK, false));
+    filt(btn_ev(12, SDL_CONTROLLER_BUTTON_START, false));
+    filt(btn_ev(11, SDL_CONTROLLER_BUTTON_START, false));
+    SETTLE();
+    CHECK(!dev_menu_is_open());
+    CHECK(queued_replays() == 0);
+    /* Separate chords on two pads, apart in time, are two chords. */
+    filt(btn_ev(11, SDL_CONTROLLER_BUTTON_BACK, true));
+    filt(btn_ev(11, SDL_CONTROLLER_BUTTON_START, true));
+    CHECK(dev_menu_is_open());
+    filt(btn_ev(11, SDL_CONTROLLER_BUTTON_START, false));
+    filt(btn_ev(11, SDL_CONTROLLER_BUTTON_BACK, false));
+    SETTLE();
+    filt(btn_ev(12, SDL_CONTROLLER_BUTTON_BACK, true));
+    filt(btn_ev(12, SDL_CONTROLLER_BUTTON_START, true));
+    CHECK(!dev_menu_is_open());
+    filt(btn_ev(12, SDL_CONTROLLER_BUTTON_START, false));
+    filt(btn_ev(12, SDL_CONTROLLER_BUTTON_BACK, false));
+    SETTLE();
+    CHECK(queued_replays() == 0);
 }
 
 static void test_pad_navigation_and_drain(void) {
@@ -620,6 +719,63 @@ static void test_virtual_pad_hotplug(void) {
 #endif
 
 
+/* Raw-joystick fallback: a device SDL has no mapping for, shaped like an
+ * Xbox pad (eight or more buttons), is mapped by the port and its raw
+ * buttons 6 and 7 (Back and Start on the xpad layout) open the menu. A
+ * small device is left alone. */
+static void test_raw_joystick_fallback(void) {
+    SDL_VirtualJoystickDesc desc;
+    SDL_Joystick *js;
+    long long frame = 0;
+    int index, small;
+    begin(true);
+    memset(&desc, 0, sizeof(desc));
+    desc.version = SDL_VIRTUAL_JOYSTICK_DESC_VERSION;
+    desc.type = SDL_JOYSTICK_TYPE_UNKNOWN;                 /* no automatic mapping */
+    desc.naxes = 6; desc.nbuttons = 11; desc.nhats = 1;
+    desc.vendor_id = 0x045e; desc.product_id = 0x028e;
+    desc.name = "Raw xpad-shaped joystick";
+    index = SDL_JoystickAttachVirtualEx(&desc);
+    CHECK(index >= 0);
+    CHECK(!SDL_IsGameController(index));
+    js = SDL_JoystickOpen(index);
+    CHECK(js);
+    pump(&frame); pump(&frame);                            /* ADDED -> fallback maps and opens it */
+    CHECK(SDL_IsGameController(index));
+    CHECK(!dev_menu_is_open());
+    CHECK(SDL_JoystickSetVirtualButton(js, 6, 1) == 0);     /* Back */
+    CHECK(SDL_JoystickSetVirtualButton(js, 7, 1) == 0);     /* Start */
+    pump(&frame);
+    CHECK(dev_menu_is_open());
+    CHECK(SDL_JoystickSetVirtualButton(js, 6, 0) == 0);
+    CHECK(SDL_JoystickSetVirtualButton(js, 7, 0) == 0);
+    pump(&frame);
+    SETTLE();
+    CHECK(dev_menu_is_open());
+    CHECK(SDL_JoystickSetVirtualButton(js, 7, 1) == 0);     /* Start first, then Back */
+    CHECK(SDL_JoystickSetVirtualButton(js, 6, 1) == 0);
+    pump(&frame);
+    CHECK(!dev_menu_is_open());
+    CHECK(SDL_JoystickSetVirtualButton(js, 6, 0) == 0);
+    CHECK(SDL_JoystickSetVirtualButton(js, 7, 0) == 0);
+    pump(&frame);
+    /* A four-button stick is not a pad and stays unmapped. */
+    memset(&desc, 0, sizeof(desc));
+    desc.version = SDL_VIRTUAL_JOYSTICK_DESC_VERSION;
+    desc.type = SDL_JOYSTICK_TYPE_UNKNOWN;
+    desc.naxes = 2; desc.nbuttons = 4;
+    desc.name = "Small stick";
+    small = SDL_JoystickAttachVirtualEx(&desc);
+    CHECK(small >= 0);
+    pump(&frame); pump(&frame);
+    CHECK(!SDL_IsGameController(small));
+    CHECK(SDL_JoystickDetachVirtual(small) == 0);
+    CHECK(SDL_JoystickDetachVirtual(index) == 0);
+    SDL_JoystickClose(js);
+    pump(&frame); pump(&frame);
+}
+
+
 static bool review_idle, review_modal;
 static bool review_field(void) { return review_idle; }
 static bool review_dialog(void) { return review_modal; }
@@ -694,6 +850,8 @@ int main(void) {
     test_touch_capture();
     test_restore_capture_and_same_second_save();
     test_same_pad_combo();
+    test_mirrored_pads_chord();
+    test_chord_tap_window();
     test_pad_navigation_and_drain();
     test_fast_forward();
     test_refusals_and_options();
@@ -701,6 +859,7 @@ int main(void) {
     test_renderer_overlay();
 #if SDL_VERSION_ATLEAST(2, 24, 0)
     test_virtual_pad_hotplug();
+    test_raw_joystick_fallback();
 #endif
     dev_menu_shutdown();
     dev_menu_reset_for_tests();

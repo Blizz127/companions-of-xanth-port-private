@@ -87,6 +87,17 @@ void dev_menu_shutdown(void);
 
 /* Per-presented-frame hooks. */
 void dev_menu_frame(long long frame);
+
+/* Back+Start chord window (shared with the other ports' reference, 300 ms
+ = 18 frames): the two buttons chord when held together in either order,
+ * or when the second press lands within the window of the first. Both are
+ * withheld from the game while a chord is still possible; a lone press is
+ * replayed as a tap once the window has passed. A chord on a second pad
+ * within the window of a chord on another pad is the same chord seen
+ * through a mirror (Steam Input, InputPlumber), not a second toggle. */
+#define DEV_MENU_CHORD_WINDOW_MS 300
+#define DEV_MENU_CHORD_MIRROR_MS DEV_MENU_CHORD_WINDOW_MS
+
 void dev_menu_after_present(void);
 
 /* Fast-forward: guest frames to run per presented frame (1 when off), and
@@ -120,6 +131,8 @@ bool dev_menu_cheats_marker(void);
 
 /* Test-only: forget all state, as if the process had just started. */
 void dev_menu_reset_for_tests(void);
+/* Tests: move the chord clock forward without sleeping. */
+void dev_menu_advance_ticks_for_tests(unsigned ms);
 
 #ifdef __cplusplus
 }

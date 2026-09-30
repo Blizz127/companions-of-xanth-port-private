@@ -119,6 +119,9 @@ typedef struct {
     unsigned reserved;                /* Back/Start held and not yet resolved */
     bool combo_fired;
     bool combo_touched;               /* the other combo button was pressed too */
+    Uint32 press_ticks[2];            /* Back, Start: last press (0 = none this gesture) */
+    bool tap_pending[2];              /* released inside the window: replay when it passes */
+    bool hold_delivered[2];           /* a lone hold already delivered its tap */
     bool needs_neutral;               /* connected with buttons held */
     int stick_dir;
 } dm_pad;
@@ -162,6 +165,9 @@ static struct {
     bool controllers_ready;
     bool rescan_pads;
     dm_pad pads[DM_MAX_PADS];
+    bool chord_seen;                  /* a Back+Start chord fired recently... */
+    SDL_JoystickID chord_pad;         /* ...on this pad... */
+    Uint32 chord_ticks;               /* ...at this time (SDL ticks) */
     bool kb_consumed[SDL_NUM_SCANCODES];
     bool kb_drain[SDL_NUM_SCANCODES];
     int kb_drain_count;
@@ -688,6 +694,65 @@ static void replay_button(SDL_JoystickID id, Uint8 button) {
     SDL_PushEvent(&ev);
 }
 
+static Uint32 s_test_ticks;
+static Uint32 dm_now(void) { Uint32 t = SDL_GetTicks() + s_test_ticks; return t ? t : 1; }
+void dev_menu_advance_ticks_for_tests(unsigned ms) { s_test_ticks += ms; }
+static int chord_index(Uint8 button) { return button == SDL_CONTROLLER_BUTTON_START ? 1 : 0; }
+static const Uint8 s_chord_button[2] = { SDL_CONTROLLER_BUTTON_BACK, SDL_CONTROLLER_BUTTON_START };
+
+/* Under Steam Input or InputPlumber the same physical chord arrives once per
+ * device that mirrors the pad. A chord on a different pad within the window
+ * of the last chord is that same chord, not a second toggle. */
+static void chord_fire(SDL_JoystickID which, Uint32 now) {
+    if (s_dm.chord_seen && s_dm.chord_pad != which && now - s_dm.chord_ticks < DEV_MENU_CHORD_MIRROR_MS) {
+        DM_LOG("pad %d chord %u ms after pad %d: same chord (mirrored pad)",
+               (int)which, (unsigned)(now - s_dm.chord_ticks), (int)s_dm.chord_pad);
+        return;
+    }
+    s_dm.chord_seen = true;
+    s_dm.chord_pad = which;
+    s_dm.chord_ticks = now;
+    dev_menu_input_event(DEV_MENU_IN_TOGGLE);
+}
+
+/* Runs every frame: replays lone Back/Start taps once the chord window has
+ * passed, delivers one tap for a lone hold that outlives the window, and
+ * ends a gesture once both buttons are up and the window is quiet. */
+static void resolve_chords(void) {
+    Uint32 now = dm_now();
+    bool mask_changed = false;
+    for (int n = 0; n < DM_MAX_PADS; ++n) {
+        dm_pad *p = &s_dm.pads[n];
+        Uint32 last;
+        if (!p->used) continue;
+        for (int i = 0; i < 2; ++i) {
+            unsigned bit = PAD_BIT(s_chord_button[i]);
+            bool expired;
+            if (!p->press_ticks[i]) continue;
+            expired = now - p->press_ticks[i] > DEV_MENU_CHORD_WINDOW_MS;
+            if (!expired || p->combo_fired || p->combo_touched) continue;
+            if (p->tap_pending[i]) {
+                p->tap_pending[i] = false;
+                p->reserved &= ~bit; mask_changed = true;
+                if (!s_dm.open) replay_button(p->id, s_chord_button[i]);
+            } else if ((p->held & bit) && !p->hold_delivered[i]) {
+                p->hold_delivered[i] = true;
+                p->reserved &= ~bit; mask_changed = true;
+                if (!s_dm.open) replay_button(p->id, s_chord_button[i]);
+            }
+        }
+        last = p->press_ticks[0] > p->press_ticks[1] ? p->press_ticks[0] : p->press_ticks[1];
+        if (last && !(p->held & COMBO_BITS) && !p->tap_pending[0] && !p->tap_pending[1] &&
+            now - last > DEV_MENU_CHORD_WINDOW_MS) {
+            p->combo_fired = p->combo_touched = false;
+            p->press_ticks[0] = p->press_ticks[1] = 0;
+            p->hold_delivered[0] = p->hold_delivered[1] = false;
+            if (p->reserved & COMBO_BITS) { p->reserved &= ~COMBO_BITS; mask_changed = true; }
+        }
+    }
+    if (mask_changed) update_pad_mask();
+}
+
 static bool filter_pad_button(const SDL_ControllerButtonEvent *e, bool down) {
     dm_pad *p;
     unsigned bit;
@@ -714,10 +779,12 @@ static bool filter_pad_button(const SDL_ControllerButtonEvent *e, bool down) {
         if (e->button == SDL_CONTROLLER_BUTTON_RIGHTSTICK)
             dev_menu_input_event(DEV_MENU_IN_FF_HOLD_OFF);
         if (bit & COMBO_BITS) {
-            bool lone = (p->reserved & bit) && !p->combo_fired && !p->combo_touched;
-            p->reserved &= ~bit;
-            if (lone && !s_dm.open) replay_button(e->which, e->button);
-            if (!(p->held & COMBO_BITS)) p->combo_fired = p->combo_touched = false;
+            int i = chord_index(e->button);
+            /* A short lone press is replayed once the chord window has passed
+             * (resolve_chords); a hold that already delivered its tap is done. */
+            if (!p->combo_fired && !p->combo_touched && !p->hold_delivered[i] && p->press_ticks[i])
+                p->tap_pending[i] = true;
+            p->hold_delivered[i] = false;
         }
         return true;
     }
@@ -729,14 +796,23 @@ static bool filter_pad_button(const SDL_ControllerButtonEvent *e, bool down) {
         return true;
     }
     if (bit & COMBO_BITS) {
+        int i = chord_index(e->button);
         unsigned other = COMBO_BITS & ~bit;
+        Uint32 now = dm_now();
+        bool seq = p->press_ticks[1 - i] && now - p->press_ticks[1 - i] <= DEV_MENU_CHORD_WINDOW_MS;
         p->consumed |= bit;
         p->reserved |= bit;
-        if (p->held & other) {
+        p->press_ticks[i] = now;
+        p->tap_pending[i] = false;
+        p->hold_delivered[i] = false;
+        /* Held together in either order, or the second press within the
+         * window of the first: a chord. Nothing of it reaches the game. */
+        if ((p->held & other) || seq) {
             p->combo_touched = true;
+            p->tap_pending[0] = p->tap_pending[1] = false;
             if (!p->combo_fired) {
                 p->combo_fired = true;
-                dev_menu_input_event(DEV_MENU_IN_TOGGLE);
+                chord_fire(e->which, now);
             }
         }
         return true;
@@ -913,6 +989,7 @@ static bool filter_event(const SDL_Event *event) {
     case SDL_CONTROLLERAXISMOTION:
         return filter_pad_axis(&event->caxis);
     case SDL_CONTROLLERDEVICEADDED:
+    case SDL_JOYDEVICEADDED:          /* an unmapped joystick: the raw fallback may adopt it */
         s_dm.rescan_pads = true;
         return false;
     case SDL_CONTROLLERDEVICEREMOVED: {
@@ -950,7 +1027,7 @@ static void reconcile_pads(void) {
         SDL_GameController *gc;
         dm_pad *p;
         unsigned held = 0;
-        if (!SDL_IsGameController(index)) continue;
+        if (!SDL_IsGameController(index) && !hal_input_map_raw_joystick(index)) continue;
         id = SDL_JoystickGetDeviceInstanceID(index);
         p = find_pad(id, false);
         if (p && p->controller) continue;
@@ -998,6 +1075,7 @@ static void update_pad_mask(void) {
 static void set_drains(void) {}
 static void reconcile_pads(void) {}
 static void update_pad_mask(void) {}
+void dev_menu_advance_ticks_for_tests(unsigned ms) { (void)ms; }
 bool dev_menu_filter_event(const SDL_Event *event, void *user) {
     (void)event; (void)user;
     return false;
@@ -1026,6 +1104,7 @@ void dev_menu_start(const dev_menu_host *host) {
     }
     load_script();
 #ifndef XANTH_HEADLESS_STUB
+    hal_input_prepare_gamepad(true);   /* Steam virtual pad + background events, before init */
     if (SDL_WasInit(SDL_INIT_GAMECONTROLLER) == 0 &&
         SDL_InitSubSystem(SDL_INIT_GAMECONTROLLER) < 0) {
         DM_LOG("controller menu input unavailable (%s); keyboard still works", SDL_GetError());
@@ -1095,6 +1174,7 @@ void dev_menu_frame(long long frame) {
     if (!s_dm.enabled) return;
 #ifndef XANTH_HEADLESS_STUB
     if (s_dm.rescan_pads) reconcile_pads();
+    resolve_chords();
 #endif
     while (s_dm.script_next < s_dm.nscript && s_dm.script[s_dm.script_next].frame <= frame) {
         const dm_script_entry *se = &s_dm.script[s_dm.script_next];

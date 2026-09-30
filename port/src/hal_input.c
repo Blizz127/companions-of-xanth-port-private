@@ -176,6 +176,42 @@ static bool gamepad_has_input(const gamepad_slot *pad) {
            abs(SDL_GameControllerGetAxis(pad->controller, SDL_CONTROLLER_AXIS_LEFTY)) > 12000;
 }
 
+bool hal_input_map_raw_joystick(int device_index) {
+    char guid[64], mapping[512], name[96];
+    SDL_Joystick *js;
+    int buttons, axes, hats;
+    const char *raw_name;
+    size_t n = 0;
+    if (SDL_IsGameController(device_index)) return true;
+    js = SDL_JoystickOpen(device_index);
+    if (!js) return false;
+    buttons = SDL_JoystickNumButtons(js);
+    axes = SDL_JoystickNumAxes(js);
+    hats = SDL_JoystickNumHats(js);
+    raw_name = SDL_JoystickName(js);
+    for (const char *q = raw_name ? raw_name : "Raw joystick"; *q && n + 1 < sizeof(name); ++q)
+        if (*q != ',' && (unsigned char)*q >= 0x20) name[n++] = *q;
+    name[n] = '\0';
+    SDL_JoystickGetGUIDString(SDL_JoystickGetDeviceGUID(device_index), guid, sizeof(guid));
+    SDL_JoystickClose(js);
+    if (buttons < 8) {   /* the shared reference: eight or more buttons, X-Box 360 layout */
+        fprintf(stderr, "[DEV_MENU] raw joystick \"%s\" (%d buttons, %d axes, %d hats) has no controller mapping; ignored\n",
+                name, buttons, axes, hats);
+        return false;
+    }
+    snprintf(mapping, sizeof(mapping),
+             "%s,%s,a:b0,b:b1,x:b2,y:b3,back:b6,guide:b8,start:b7,leftstick:b9,rightstick:b10,"
+             "leftshoulder:b4,rightshoulder:b5,dpup:h0.1,dpdown:h0.4,dpleft:h0.8,dpright:h0.2,"
+             "leftx:a0,lefty:a1,rightx:a3,righty:a4,lefttrigger:a2,righttrigger:a5,", guid, name);
+    if (SDL_GameControllerAddMapping(mapping) < 0) {
+        fprintf(stderr, "[DEV_MENU] raw joystick \"%s\": mapping rejected: %s\n", name, SDL_GetError());
+        return false;
+    }
+    fprintf(stderr, "[DEV_MENU] raw joystick fallback: \"%s\" (%d buttons, %d axes, %d hats) mapped as an Xbox-layout pad\n",
+            name, buttons, axes, hats);
+    return SDL_IsGameController(device_index) == SDL_TRUE;
+}
+
 static void reconcile_gamepads(void) {
     for (int i = 0; i < MAX_GAMEPADS; ++i) {
         gamepad_slot *pad = &g_pads[i];
@@ -187,7 +223,8 @@ static void reconcile_gamepads(void) {
         } else if (!pad->ready && !gamepad_has_input(pad)) pad->ready = true;
     }
     for (int j = 0; j < SDL_NumJoysticks(); ++j) {
-        if (!SDL_IsGameController(j) || find_gamepad(SDL_JoystickGetDeviceInstanceID(j)) >= 0) continue;
+        if (find_gamepad(SDL_JoystickGetDeviceInstanceID(j)) >= 0) continue;
+        if (!SDL_IsGameController(j) && !hal_input_map_raw_joystick(j)) continue;
         int i;
         for (i = 0; i < MAX_GAMEPADS && g_pads[i].controller; ++i) {}
         if (i == MAX_GAMEPADS) break;
@@ -274,6 +311,21 @@ void hal_input_prepare_gamepad(bool enabled) {
     if (!enabled) return;
     SDL_setenv("SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS", "1", 1);
     SDL_SetHintWithPriority(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1", SDL_HINT_OVERRIDE);
+    /* SDL 2.28+ hides Steam's virtual X-Box 360 pad unless this is set, and
+     * Steam sets it only for titles it launched itself. Under gamescope Game
+     * Mode a launcher-started port otherwise sees no pad at all: the physical
+     * device is owned by Steam Input and its evdev node is root-only. */
+    {
+        static bool logged;
+        const char *before = SDL_getenv("SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD");
+        SDL_setenv("SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD", "1", 1);
+        SDL_SetHintWithPriority("SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD", "1", SDL_HINT_OVERRIDE);
+        if (!logged) {
+            logged = true;
+            fprintf(stderr, "[DEV_MENU] SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD: %s -> 1\n",
+                    before && *before ? before : "(unset)");
+        }
+    }
     const char *keys[] = {"SDL_GAMECONTROLLER_IGNORE_DEVICES", "SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT"};
     for (unsigned i = 0; i < sizeof(keys) / sizeof(keys[0]); ++i) {
         const char *value = SDL_getenv(keys[i]);
@@ -570,6 +622,7 @@ void hal_input_poll(int *mouse_x, int *mouse_y, int *mouse_buttons, int *key_cod
 
         case SDL_CONTROLLERDEVICEADDED:
         case SDL_CONTROLLERDEVICEREMOVED:
+        case SDL_JOYDEVICEADDED:
             if (g_gamepad_enabled) reconcile_gamepads();
             break;
         case SDL_CONTROLLERAXISMOTION: {

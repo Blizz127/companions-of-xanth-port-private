@@ -19,9 +19,14 @@ config turns it off. XANTH_DEV_MENU overrides CLI choices, which override config
 `--dev-menu` enables it again. `XANTH_CHEATS=0`
 hard-disables it, so no filter, overlay or controller handle is subscribed.
 
-- **Opening:** F12, or Back+Start held on the same pad. Back and Start are
-  reserved from the moment either is pressed; a lone press reaches the game as
-  a tap on release, and a same-pad chord toggles the menu.
+- **Opening:** F12, or Back+Start on the same pad: held together in either
+  order, or the second press within 300 ms of the first. Both buttons are
+  withheld from the game while a chord is still possible; a lone press
+  reaches the game as a tap once the window has passed (a lone hold
+  delivers one tap). Under Steam Input or InputPlumber the same physical chord
+  arrives once per device that mirrors the pad; a chord on another pad
+  within 300 ms of the first is that same chord and toggles nothing more
+  (before alpha.6 it re-toggled, so the menu opened and closed at once).
 - **Navigation:** Up/Down, the D-pad or the left stick (threshold 12000, one
   row per deflection) move the cursor. Enter/A selects, and Esc/B goes back,
   closing the menu at the root. There is no auto-repeat.
@@ -188,6 +193,18 @@ builders now reach the Region of Fire; each of those entries is listed only
 after a passing local sweep.
 Cheats and quick save/load are not offered: neither has a verified
 game-state path yet.
+
+A joystick SDL has no controller mapping for, but that is shaped like an
+Xbox pad (eight or more buttons), is given the standard
+Linux xpad layout at connect time (raw-joystick fallback; logged as
+`[DEV_MENU] raw joystick fallback`). Its buttons 6 and 7 are Back and
+Start. Smaller devices are ignored and logged once.
+
+Steam's virtual X-Box 360 pad is only visible to SDL 2.28+ when
+`SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD=1` is set before SDL starts;
+Steam sets it only for titles it launches itself. The port sets it (and
+logs the previous value) so a launcher-started run under gamescope Game
+Mode, where the physical pad's device node is root-only, still has a pad.
 
 The controller backend now has virtual-device regression coverage for Steam
 hint sanitation, active-pad selection, removal and neutral reconnects. The

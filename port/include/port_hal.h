@@ -106,6 +106,11 @@ void hal_video_set_overlay(void (*fn)(SDL_Renderer *, const hal_video_viewport *
 void hal_input_init(void);
 /* Call before SDL initialization when controller input is requested. */
 void hal_input_prepare_gamepad(bool enabled);
+/* Raw-joystick fallback: a joystick SDL has no controller mapping for, but
+ * that looks like an Xbox-layout pad (eight or more buttons),
+ * gets the standard Linux xpad mapping so it produces controller events.
+ * Returns true when the device is a game controller afterwards. */
+bool hal_input_map_raw_joystick(int device_index);
 void hal_input_enable_gamepad(bool enabled);
 void hal_input_enable_hotkeys(bool enabled);
 int hal_input_take_hotkey(void);
