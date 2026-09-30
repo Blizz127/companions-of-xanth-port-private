@@ -1,8 +1,9 @@
 Companions of Xanth — quick start
 
-1. Download the Linux x86_64 release asset named
-   xanth-port-v0.1.0-alpha.5-linux-x86_64.tar.gz from GitHub Releases and extract
-   it to ~/Games/companions-of-xanth/port/.
+1. Get the Linux x86_64 package. The latest public release on GitHub Releases
+   is xanth-port-v0.1.0-alpha.4-linux-x86_64.tar.gz; newer builds such as
+   v0.1.0-alpha.5 are delivered through the owner's launcher private channel.
+   Extract the package to ~/Games/companions-of-xanth/port/.
 2. Supply XANTH.EXE plus the 90 files listed in DATA_FILES.txt from your own
    original disc or an installation you already own. Copy all 91 directly
    into ~/Games/companions-of-xanth/data/. GOG currently has a Dreamlist page,

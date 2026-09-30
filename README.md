@@ -8,10 +8,12 @@ This is a passion project. I'm working hard on it, but it's made for fun and for
 
 ## How to play
 
-1. Download the Linux x86_64 release asset named
-   `xanth-port-v0.1.0-alpha.5-linux-x86_64.tar.gz` from
-   [Releases](https://github.com/Blizz127/Companions-Of-Xanth-Decompile/releases/tag/v0.1.0-alpha.5) and extract it
-   to `~/Games/companions-of-xanth/port/`. The package contains the port and
+1. Get the Linux x86_64 package. The latest public release is
+   `xanth-port-v0.1.0-alpha.4-linux-x86_64.tar.gz` from
+   [Releases](https://github.com/Blizz127/Companions-Of-Xanth-Decompile/releases/tag/v0.1.0-alpha.4).
+   Newer builds, including v0.1.0-alpha.5, are delivered through the owner's
+   launcher private channel; public releases happen at milestones. Extract
+   the package to `~/Games/companions-of-xanth/port/`. The package contains the port and
    checkpoint-building tools, but no game files. Linux uses your system SDL2.
 2. Supply files from your own copy: `XANTH.EXE` and the 90 runtime files listed
    in the package's `DATA_FILES.txt`, all directly in one folder. Copy them
