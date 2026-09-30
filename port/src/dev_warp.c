@@ -152,6 +152,15 @@ int dev_warp_step(int order) {
 
 /* The fingerprint at a step's start: the previous step's end, or a fresh
  * game (score 0, room and items unknown). */
+/* A chain start ("*" as the step name) is a route point reached from a
+ * recorded anchor save rather than by finishing the step before it. It is a
+ * warp spot and the start of the next step, but never a step itself: any
+ * progress between the previous step's end and it is not on a recorded
+ * route. */
+static bool chain_start(const dev_warp_entry *e) {
+    return !strcmp(e->step_name, "*");
+}
+
 static bool start_of(int order, int *room, int *score, int *items) {
     int prev = dev_warp_step(order - 1);
     if (order == 1) { *room = -1; *score = 0; *items = -1; return true; }
@@ -167,15 +176,17 @@ static bool same_point(int r1, int s1, int i1, int r2, int s2, int i2) {
 }
 
 int dev_warp_current_step(int room, int score, int items) {
-    for (int order = 1; order < 1000; ++order) {
+    int last = 0;
+    for (int i = 0; i < s_dw.count; ++i)
+        if (s_dw.entries[i].step > last) last = s_dw.entries[i].step;
+    /* Steps missing from the list (not built, or not verified) leave gaps;
+     * the steps after a gap are still found. */
+    for (int order = 1; order <= last; ++order) {
         int end = dev_warp_step(order), sr, ss, si;
         const dev_warp_entry *e;
-        if (end < 0) {
-            if (dev_warp_step(order + 1) < 0) break;
-            continue;
-        }
+        if (end < 0) continue;
         e = &s_dw.entries[end];
-        if (!start_of(order, &sr, &ss, &si) || e->score < 0) continue;
+        if (chain_start(e) || !start_of(order, &sr, &ss, &si) || e->score < 0) continue;
         /* A step whose end looks exactly like its start cannot be told apart
          * once done: never offered. */
         if (same_point(sr, ss, si, e->room, e->score, e->items)) continue;
@@ -195,7 +206,7 @@ int dev_warp_area_end(const char *region, const char *area) {
     int best = -1;
     for (int i = 0; i < s_dw.count; ++i) {
         const dev_warp_entry *e = &s_dw.entries[i];
-        if (e->step > 0 && !strcmp(e->region, region) && !strcmp(e->area, area) &&
+        if (e->step > 0 && !chain_start(e) && !strcmp(e->region, region) && !strcmp(e->area, area) &&
             (best < 0 || e->step > s_dw.entries[best].step))
             best = i;
     }

@@ -173,10 +173,43 @@ int main(void) {
     CHECK(dev_warp_area_end("Mundania", "House") == dev_warp_find("s4"));
     CHECK(dev_warp_area_end("Xanth", "Cavern") == dev_warp_find("s5"));
     CHECK(dev_warp_step(2) == dev_warp_find("s2") && dev_warp_step(9) == -1);
+
+    /* A chain start (step name "*") begins the next step from an anchor save
+     * but is never offered itself, and never finishes an area. Progress in
+     * the gap between s5's end (40) and the anchor (193) is not on a route. */
+    write_file(g_ck, "checkpoints.txt",
+        "s1\ta\tMundania\tHouse\tKitchen\t1\t6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b\t64\t5\t1\tFind the kitchen\t2\n"
+        "s2\tb\tMundania\tHouse\tKitchen\t1\td4735e3a265e16eee03f59718b9b5d03019c07d8b6c51f90da3a666eec13ab35\t64\t20\t2\tPhone\t2\n"
+        "s3\tc\tMundania\tHouse\tKitchen\t1\t4e07408562bedb8b60ce05c1decfe3ad16b72230967de01f640b7e4729b49fce\t64\t20\t3\tSupplies\t5\n"
+        "s4\td\tMundania\tHouse\tKitchen\t1\t4b227777d4dd1fc61c6f884f48641d02b4d121d3fd328cb08b5531fcacdabf8a\t64\t20\t4\tIdle\t5\n"
+        "s5\te\tXanth\tCavern\tCave\t1\tef2d127de37b942baad06145e54b0c619a1f22327b2ebbcfbec78f5564afe39d\t9\t40\t5\tCavern\t5\n"
+        "s6\tf\tXanth\tVoid\tBoundary\t1\te7f6c011776e8db7cd330b54174fd76f7d0216b612387a5ffcfb81e6f0919683\t120\t193\t6\t*\t4\n"
+        "s7\tg\tXanth\tVoid\tDoor\t1\t7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451\t130\t208\t7\tShimmering door\t4\n");
+    write_file(g_ck, "s6.SAV", "6"); write_file(g_ck, "s7.SAV", "7");
+    load();
+    CHECK(dev_warp_find("s6") >= 0);                                 /* still a warp spot */
+    CHECK(dev_warp_current_step(40, 100, 5) == -1);                  /* the gap */
+    CHECK(dev_warp_current_step(9, 40, 5) == -1);                    /* s5 done: not s6 */
+    CHECK(dev_warp_current_step(120, 193, 4) == dev_warp_find("s7")); /* at the anchor */
+    CHECK(dev_warp_current_step(125, 200, 4) == dev_warp_find("s7"));
+    CHECK(dev_warp_area_end("Xanth", "Void") == dev_warp_find("s7"));
+    /* Two missing steps (s3, s4 not verified) still leave the later chain found. */
+    write_file(g_ck, "checkpoints.txt",
+        "s1\ta\tMundania\tHouse\tKitchen\t1\t6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b\t64\t5\t1\tFind the kitchen\t2\n"
+        "s2\tb\tMundania\tHouse\tKitchen\t1\td4735e3a265e16eee03f59718b9b5d03019c07d8b6c51f90da3a666eec13ab35\t64\t20\t2\tPhone\t2\n"
+        "s6\tf\tXanth\tVoid\tBoundary\t1\te7f6c011776e8db7cd330b54174fd76f7d0216b612387a5ffcfb81e6f0919683\t120\t193\t6\t*\t4\n"
+        "s7\tg\tXanth\tVoid\tDoor\t1\t7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451\t130\t208\t7\tShimmering door\t4\n");
+    load();
+    CHECK(dev_warp_current_step(120, 193, 4) == dev_warp_find("s7"));
+    CHECK(dev_warp_current_step(64, 20, 2) == -1);                   /* s3 unknown: not offered */
+    write_file(g_ck, "checkpoints.txt",
+        "s6\tf\tXanth\tVoid\tBoundary\t1\te7f6c011776e8db7cd330b54174fd76f7d0216b612387a5ffcfb81e6f0919683\t120\t193\t6\t*\t4\n");
+    load();
+    CHECK(dev_warp_area_end("Xanth", "Void") == -1);                 /* a lone start finishes nothing */
     {
-        static const char *extra[] = { "s1.SAV", "s2.SAV", "s3.SAV", "s4.SAV", "s5.SAV" };
+        static const char *extra[] = { "s1.SAV", "s2.SAV", "s3.SAV", "s4.SAV", "s5.SAV", "s6.SAV", "s7.SAV" };
         char path[256];
-        for (size_t i = 0; i < 5; ++i) { snprintf(path, sizeof(path), "%s/%s", g_ck, extra[i]); unlink(path); }
+        for (size_t i = 0; i < 7; ++i) { snprintf(path, sizeof(path), "%s/%s", g_ck, extra[i]); unlink(path); }
     }
 
     {

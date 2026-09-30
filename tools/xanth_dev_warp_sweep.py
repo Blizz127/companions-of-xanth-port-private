@@ -173,7 +173,7 @@ def main(argv=None) -> int:
     for cid, row in rows.items():
         if args.only and cid not in args.only:
             continue
-        if args.steps and (len(row) < 10 or row[9] in ("0", "")):
+        if args.steps and (len(row) < 11 or row[9] in ("0", "") or row[10] == "*"):  # chain starts: warp only
             continue
         r = sweep_one(port, data, ckdir, rows, row, evidence, args.steps)
         results.append(r)

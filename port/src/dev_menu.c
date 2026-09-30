@@ -436,6 +436,8 @@ static void run_action(dm_action act) {
         const dev_warp_entry *e = dev_warp_get(s_dm.action_param);
         if (e && dev_warp_request(s_dm.action_param, msg, sizeof(msg))) {
             int next = dev_warp_step(e->step + 1);
+            if (next >= 0 && !strcmp(dev_warp_get(next)->step_name, "*"))
+                next = dev_warp_step(e->step + 2);      /* skip a chain start */
             close_menu();
             DM_LOG("finish step %d (%s) via %s; next: %s", e->step, e->step_name, e->id,
                    next >= 0 ? dev_warp_get(next)->step_name : "(none recorded)");
