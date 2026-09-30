@@ -197,7 +197,7 @@ game-state path yet.
 A joystick SDL has no controller mapping for, but that is shaped like an
 Xbox pad (eight or more buttons), is given the standard
 Linux xpad layout at connect time (raw-joystick fallback; logged as
-`[DEV_MENU] raw joystick fallback`). Its buttons 6 and 7 are Back and
+`[input] raw joystick fallback`). Its buttons 6 and 7 are Back and
 Start. Smaller devices are ignored and logged once.
 
 Steam's virtual X-Box 360 pad is only visible to SDL 2.28+ when

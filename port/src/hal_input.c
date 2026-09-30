@@ -195,7 +195,7 @@ bool hal_input_map_raw_joystick(int device_index) {
     SDL_JoystickGetGUIDString(SDL_JoystickGetDeviceGUID(device_index), guid, sizeof(guid));
     SDL_JoystickClose(js);
     if (buttons < 8) {   /* the shared reference: eight or more buttons, X-Box 360 layout */
-        fprintf(stderr, "[DEV_MENU] raw joystick \"%s\" (%d buttons, %d axes, %d hats) has no controller mapping; ignored\n",
+        fprintf(stderr, "[input] raw joystick \"%s\" (%d buttons, %d axes, %d hats) has no controller mapping; ignored\n",
                 name, buttons, axes, hats);
         return false;
     }
@@ -204,10 +204,10 @@ bool hal_input_map_raw_joystick(int device_index) {
              "leftshoulder:b4,rightshoulder:b5,dpup:h0.1,dpdown:h0.4,dpleft:h0.8,dpright:h0.2,"
              "leftx:a0,lefty:a1,rightx:a3,righty:a4,lefttrigger:a2,righttrigger:a5,", guid, name);
     if (SDL_GameControllerAddMapping(mapping) < 0) {
-        fprintf(stderr, "[DEV_MENU] raw joystick \"%s\": mapping rejected: %s\n", name, SDL_GetError());
+        fprintf(stderr, "[input] raw joystick \"%s\": mapping rejected: %s\n", name, SDL_GetError());
         return false;
     }
-    fprintf(stderr, "[DEV_MENU] raw joystick fallback: \"%s\" (%d buttons, %d axes, %d hats) mapped as an Xbox-layout pad\n",
+    fprintf(stderr, "[input] raw joystick fallback: \"%s\" (%d buttons, %d axes, %d hats) mapped as an Xbox-layout pad\n",
             name, buttons, axes, hats);
     return SDL_IsGameController(device_index) == SDL_TRUE;
 }
@@ -258,7 +258,7 @@ static bool select_gamepad(int index) {
         vendor = SDL_GameControllerGetVendor(pad->controller);
         product = SDL_GameControllerGetProduct(pad->controller);
 #endif
-        fprintf(stderr, "[DEV_MENU] pad: %s vid:pid=%04x:%04x instance=%d reason=%s\n",
+        fprintf(stderr, "[input] pad: %s vid:pid=%04x:%04x instance=%d reason=%s\n",
                 SDL_GameControllerName(pad->controller), vendor, product, (int)pad->id,
                 pad->steam_virtual ? "virtual-only" : "physical-active");
     }
@@ -318,13 +318,13 @@ void hal_input_prepare_gamepad(bool enabled) {
     {
         static bool logged;
         const char *before = SDL_getenv("SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD");
-        SDL_setenv("SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD", "1", 1);
-        SDL_SetHintWithPriority("SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD", "1", SDL_HINT_OVERRIDE);
         if (!logged) {
             logged = true;
-            fprintf(stderr, "[DEV_MENU] SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD: %s -> 1\n",
+            fprintf(stderr, "[input] SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD: %s -> 1\n",
                     before && *before ? before : "(unset)");
         }
+        SDL_setenv("SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD", "1", 1);
+        SDL_SetHintWithPriority("SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD", "1", SDL_HINT_OVERRIDE);
     }
     const char *keys[] = {"SDL_GAMECONTROLLER_IGNORE_DEVICES", "SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT"};
     for (unsigned i = 0; i < sizeof(keys) / sizeof(keys[0]); ++i) {
@@ -344,7 +344,7 @@ void hal_input_prepare_gamepad(bool enabled) {
         }
         if (strcmp(before, after)) {
             SDL_setenv(keys[i], after, 1);
-            fprintf(stderr, "[DEV_MENU] %s: %s -> %s\n", keys[i], before, after);
+            fprintf(stderr, "[input] %s: %s -> %s\n", keys[i], before, after);
         }
         SDL_free(before); SDL_free(copy); SDL_free(after);
     }
@@ -365,7 +365,7 @@ void hal_input_enable_gamepad(bool enabled) {
     }
     hal_input_prepare_gamepad(true);
     if (SDL_WasInit(SDL_INIT_GAMECONTROLLER) == 0 && SDL_InitSubSystem(SDL_INIT_GAMECONTROLLER) < 0) {
-        fprintf(stderr, "[DEV_MENU] controller unavailable: %s\n", SDL_GetError());
+        fprintf(stderr, "[input] controller unavailable: %s\n", SDL_GetError());
         return;
     }
     reconcile_gamepads();
