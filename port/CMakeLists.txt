@@ -171,6 +171,7 @@ set(XANTH_COMMON_SOURCES
     src/dos_mem.c
     src/asset_oracle.c
     src/hal_video.c
+    src/controller_help.c
     src/hal_audio.c
     src/hal_input.c
     src/hal_fs.c
@@ -190,6 +191,7 @@ set(XANTH_PORT_SOURCES
     src/emu/native_stage2.c
     src/dos_mem.c
     src/hal_video.c
+    src/controller_help.c
     src/hal_audio.c
     src/hal_input.c
     src/hal_fs.c
@@ -376,6 +378,38 @@ if(XANTH_BUILD_TESTS)
     set_target_properties(test_adversarial_dma PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+    add_executable(xanth_controller_help_tests tests/test_controller_help.c src/controller_help.c src/dos_mem.c)
+    target_include_directories(xanth_controller_help_tests PRIVATE include)
+    add_test(NAME ControllerHelpTests COMMAND xanth_controller_help_tests)
+    if(UNIX)
+        add_executable(xanth_vm_mouse_tests tests/test_vm_mouse_events.c src/dos_mem.c $<TARGET_OBJECTS:xanth_emu>)
+        target_include_directories(xanth_vm_mouse_tests PRIVATE include include/emu)
+        add_test(NAME VmMouseEventsTests COMMAND xanth_vm_mouse_tests)
+    endif()
+    if(SDL2_FOUND_ANY)
+        add_executable(xanth_mouse_video_tests tests/test_mouse_video.c src/dos_mem.c src/controller_help.c)
+        target_include_directories(xanth_mouse_video_tests PRIVATE include)
+        target_link_libraries(xanth_mouse_video_tests PRIVATE ${SDL2_TARGET_LIB})
+        add_test(NAME MouseVideoTests COMMAND xanth_mouse_video_tests)
+        set_tests_properties(MouseVideoTests PROPERTIES ENVIRONMENT "SDL_VIDEODRIVER=dummy;SDL_AUDIODRIVER=dummy")
+    endif()
+
+    # SDL virtual controllers require 2.0.14; preservation stub builds omit this.
+    if(SDL2_FOUND_ANY)
+        include(CheckSymbolExists)
+        set(CMAKE_REQUIRED_LIBRARIES ${SDL2_TARGET_LIB})
+        check_symbol_exists(SDL_JoystickAttachVirtual "SDL.h" XANTH_SDL_VIRTUAL_CONTROLLER)
+        unset(CMAKE_REQUIRED_LIBRARIES)
+        if(XANTH_SDL_VIRTUAL_CONTROLLER)
+            add_executable(xanth_controller_tests tests/test_controller.c src/hal_input.c)
+            target_include_directories(xanth_controller_tests PRIVATE include)
+            target_link_libraries(xanth_controller_tests PRIVATE ${SDL2_TARGET_LIB})
+            add_test(NAME ControllerInputTests COMMAND xanth_controller_tests)
+            set_tests_properties(ControllerInputTests PROPERTIES
+                ENVIRONMENT "SDL_VIDEODRIVER=dummy;SDL_AUDIODRIVER=dummy")
+        endif()
+    endif()
+
     add_test(NAME CpuConformanceTests COMMAND xanth_cpu_tests)
     set_tests_properties(CpuConformanceTests PROPERTIES TIMEOUT 60)
 
@@ -418,7 +452,7 @@ if(XANTH_BUILD_TESTS)
 
     add_test(NAME NativeDmaPipelineTests COMMAND test_dma_pipeline)
     set_tests_properties(NativeDmaPipelineTests PROPERTIES
-        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/.."
+        WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
         ENVIRONMENT "SDL_VIDEODRIVER=dummy;SDL_AUDIODRIVER=dummy"
         TIMEOUT 60
     )

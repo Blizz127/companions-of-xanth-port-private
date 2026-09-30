@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
+#include <limits.h>
 
 static int g_tests_run = 0;
 static int g_tests_passed = 0;
@@ -144,10 +145,21 @@ static void test_video_viewport_geometry(void) {
     v = hal_video_compute_viewport(0, 800, HAL_VIDEO_PRESENT_ASPECT_4_3);
     TEST_ASSERT(v.x == 0 && v.y == 0 && v.width == 0 && v.height == 0,
                 "invalid output dimensions must produce an empty viewport");
+    v = hal_video_compute_viewport(INT_MAX, INT_MAX, HAL_VIDEO_PRESENT_ASPECT_4_3);
+    TEST_ASSERT(v.width == INT_MAX && v.height == (int)(((int64_t)INT_MAX * 3) / 4)
+                && v.x == 0 && v.y == (INT_MAX - v.height) / 2,
+                "Large square dimensions must preserve 4:3 geometry without integer overflow");
+    v = hal_video_compute_viewport(INT_MAX, INT_MAX / 2, HAL_VIDEO_PRESENT_ASPECT_4_3);
+    TEST_ASSERT(v.height == INT_MAX / 2
+                && v.width == (int)(((int64_t)(INT_MAX / 2) * 4) / 3)
+                && v.y == 0 && v.x == (INT_MAX - v.width) / 2,
+                "Large wide dimensions must pillarbox without integer overflow");
 }
 
 static void test_video_presentation_state(void) {
     printf("[TEST] Running test_video_presentation_state...\n");
+    TEST_ASSERT(!hal_video_init(INT_MAX, false, true, false),
+                "Excessive window scale must fail before overflowing dimensions");
     bool initialized = hal_video_init(2, false, true, false);
     TEST_ASSERT(initialized, "Headless video initialization must succeed");
     if (!initialized) return;

@@ -23,7 +23,7 @@ runtime-selected music backend; the current OPL/AdLib path remains the default.
 | Linear filter | `--linear` or `linear_filter=true` | Optional SDL linear texture sampling. Off by default. It softens pixels and is not a pixel-art reconstruction filter. |
 | CRT scanlines | `--crt` or `crt=true` | Optional host-side scanline overlay. This is a lightweight overlay, not a programmable CRT shader. |
 | Enhanced graphics preset | `--enhanced-graphics` or `enhanced_graphics=true` | Opts into both linear texture sampling and the CRT scanline overlay from the first presented frame. It affects only SDL presentation; the guest framebuffer, logic, and saved screenshots stay unchanged. Off by default. |
-| Gamepad | `--controller` or `controller=true` | SDL GameController: left stick moves the pointer, A clicks, X right-clicks, D-pad moves with guest arrow keys, Start presses Enter. Off by default. |
+| Gamepad | `--controller` or `controller=true` | SDL GameController: left stick moves the pointer, A clicks, X right-clicks, D-pad moves with guest arrow keys, Start presses Enter. Supports connecting/reconnecting during play and releases controller-owned clicks when disconnected or disabled. Off by default. |
 | Host hotkeys | `--hotkeys` or `hotkeys=true` | Opt-in F11 fullscreen toggle and F10 scanline toggle. These host shortcuts are not sent to the guest when enabled. |
 | Per-channel volume | `--volume-master`, `--volume-music`, `--volume-sfx`, `--volume-voice` | Each accepts 0–128. Existing defaults are retained when omitted. |
 | Mixed audio capture | `--audio-dump <file.wav>` | Optional 44.1 kHz, 16-bit stereo WAV capture of the final SDL mixer output. Disabled by default; the file is written only when requested. |
@@ -91,6 +91,14 @@ available on the command line.
 
 ## Preservation verification
 
+Controller regression coverage uses SDL virtual devices, including a silent
+Steam virtual pad beside a Lenovo-identified fixture. It checks startup hint
+sanitation before SDL initializes, physical input precedence, fallback to an
+active virtual pad, hotplug by instance ID, neutral input after reconnect,
+shared mouse/button ownership, guest pointer bounds, and keyboard operation
+after removal. Physical Deck/Legion testing remains unverified. These input
+changes are available only with `--controller`; keyboard/mouse remain default.
+
 The enhancement layer calls the existing SDL2 HAL and does not modify retail
 code. The existing VM frame-hash tests remain the gate for game state and
 rendered guest output. Host presentation options such as filters affect only
@@ -140,9 +148,14 @@ With `--mods ... --replacement-fonts`, the frame is `0d7b760b986313c2` and the
 BMP SHA-256 is
 `f410c27ad6decb29bcb576dc5c75680476ee31d6af8fe25cf2ccdd62e8214736`.
 The narrative text crop changes, while the bedroom art and verb-panel crops
-remain byte-identical. All four runs finish with `fault=ok` and a valid MCB
-chain. The generated font and screenshots stay in the system temporary
-directory; the original retail font is never overwritten. This checks one
+remain byte-identical. The regression pins both the retail and changed BMP
+hashes and the changed frame hash. Enabling the font switch without `--mods`,
+or with an empty mods directory, also preserves retail
+output. All six runs finish with `fault=ok` and a valid MCB chain. The test
+uses the executable in the installed `game_cd/XANTH` directory and fails
+explicitly if required retail files are missing. The generated font and
+screenshots stay in the system temporary directory; the original retail font
+is never overwritten. This checks one
 measured font layout and opening checkpoint, not arbitrary replacement fonts
 or higher-resolution text rendering.
 
